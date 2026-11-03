@@ -177,7 +177,7 @@ class ObjRef:
   """
 
   type: Literal[
-    "body", "xbody", "joint", "geom", "site", "actuator", "tendon", "camera"
+    "body", "xbody", "joint", "geom", "site", "actuator", "tendon", "camera", "mesh"
   ]
   """Type of the object."""
   name: str
@@ -211,6 +211,8 @@ class BuiltinSensorCfg(SensorCfg):
     return self.name
 
   def __post_init__(self) -> None:
+    if self.sensor_type not in _SENSOR_TYPE_MAP:
+      raise ValueError(f"Unsupported builtin sensor type '{self.sensor_type}'")
     if self.sensor_type in _SENSORS_REQUIRING_SITE:
       if self.obj is None:
         raise ValueError(

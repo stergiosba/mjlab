@@ -17,7 +17,8 @@ import torch
 import viser
 from typing_extensions import override
 
-from mjlab.sensor.raycast_sensor import RayCastSensor
+from mjlab.sensor.raycast_sensor import RayCastSensor, RayCastSensorCfg
+from mjlab.sensor.tactile_sensor import TactileSensor, TactileSensorCfg
 from mjlab.sim.sim import Simulation
 from mjlab.viewer.base import (
   BaseViewer,
@@ -388,16 +389,21 @@ class ViserPlayViewer(BaseViewer):
   def _create_sensor_debug_vis_gui(self) -> None:
     """Add per-sensor debug visualization checkboxes."""
     env = self.env.unwrapped
-    vis_sensors = [
-      s
-      for s in env.scene.sensors.values()
-      if isinstance(s, RayCastSensor) and s.cfg.debug_vis
-    ]
-    if not vis_sensors:
+    # (sensor, cfg) pairs whose cfg is guaranteed non-None so it can be
+    # captured safely in the closures below.
+    ray_sensors: list[tuple[RayCastSensor, RayCastSensorCfg]] = []
+    tactile_sensors: list[tuple[TactileSensor, TactileSensorCfg]] = []
+    for s in env.scene.sensors.values():
+      if isinstance(s, RayCastSensor) and s.cfg.debug_vis:
+        ray_sensors.append((s, s.cfg))
+      elif isinstance(s, TactileSensor) and s._debug_vis_enabled:
+        tactile_sensors.append((s, s.tactile_cfg))
+    if not ray_sensors and not tactile_sensors:
       return
-    for sensor in vis_sensors:
+
+    for sensor, cfg in ray_sensors + tactile_sensors:
       cb = self._server.gui.add_checkbox(
-        sensor.cfg.name,
+        cfg.name,
         initial_value=sensor._debug_vis_enabled,
       )
 
@@ -406,6 +412,23 @@ class ViserPlayViewer(BaseViewer):
         self._scene.needs_update = True
 
       cb.on_update(_on_update)
+
+      # Size slider for sensors whose debug markers scale with meansize.
+      if isinstance(sensor, TactileSensor):
+        assert isinstance(cfg, TactileSensorCfg)
+        sb = self._server.gui.add_slider(
+          f"{cfg.name} size",
+          min=0.01,
+          max=2.0,
+          step=0.01,
+          initial_value=cfg.debug_vis_scale,
+        )
+
+        def _on_size(_ev, _s=sensor, _sb=sb) -> None:
+          assert isinstance(_s, TactileSensor)
+          _s.tactile_cfg.debug_vis_scale = _sb.value
+
+        sb.on_update(_on_size)
 
   def _create_reward_debug_vis_gui(self) -> None:
     """Add per-reward debug visualization checkboxes."""
